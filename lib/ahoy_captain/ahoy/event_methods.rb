@@ -19,14 +19,44 @@ module AhoyCaptain
         end
 
         scope :with_entry_pages, -> {
-          with(entry_pages: self.select("MIN(#{table_name}.created_at) as min_id, #{Arel.sql("#{AhoyCaptain.config.event.url_column} AS url")}").where(name: AhoyCaptain.config.event[:view_name]).group("#{table_name}.properties")).joins("INNER JOIN entry_pages ON entry_pages.min_id = #{table_name}.id")
+          with(
+            entry_pages: self.select(
+              "sub.min_created_at as min_id, 
+               sub.id as entry_id, 
+               #{Arel.sql("#{AhoyCaptain.config.event.url_column} AS url")}"
+            )
+            .from(
+              self.select(
+                "MIN(#{table_name}.created_at) as min_created_at, 
+                 FIRST_VALUE(#{table_name}.id) OVER (PARTITION BY #{table_name}.properties ORDER BY #{table_name}.created_at ASC) as id"
+              )
+              .where(name: AhoyCaptain.config.event[:view_name])
+              .group("#{table_name}.properties")
+              .as('sub')
+            )
+          )
+          .joins("INNER JOIN entry_pages ON entry_pages.min_id = sub.entry_id")
         }
-
+        
         scope :with_exit_pages, -> {
-          with(exit_pages: self.select("MAX(#{table_name}.created_at) as max_id, #{Arel.sql("#{AhoyCaptain.config.event.url_column} AS url")}")
-                               .where(name: AhoyCaptain.config.event[:view_name]).group("#{table_name}.properties"))
-            .joins("INNER JOIN exit_pages ON exit_pages.max_id = #{table_name}.id")
-        }
+          with(
+            exit_pages: self.select(
+              "sub.max_created_at as max_id, 
+               sub.id as exit_id, 
+               #{Arel.sql("#{AhoyCaptain.config.event.url_column} AS url")}"
+            )
+            .from(
+              self.select(
+                "MAX(#{table_name}.created_at) as max_created_at, 
+                 LAST_VALUE(#{table_name}.id) OVER (PARTITION BY #{table_name}.properties ORDER BY #{table_name}.created_at ASC) as id"
+              )
+              .where(name: AhoyCaptain.config.event[:view_name])
+              .group("#{table_name}.properties")
+              .as('sub')
+            )
+          )
+          .joins("INNER JOIN exit_pages ON exit_pages.max_id = sub.exit_id")
+        }        
 
         scope :with_routes, -> { where(AhoyCaptain.config.event[:url_exists]) }
 
